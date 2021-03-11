@@ -4,10 +4,14 @@
 
 #include "HID-Project.h"
 
-#define VERSION 0.1
+#define VERSION "0.2"
 #define PIN_BTN   5
 #define KEYMAP_LEN 256
 //#define DEBUG_MODE
+
+// TODO:キーコードuint16_t化
+// https://github.com/NicoHood/HID/blob/master/src/KeyboardLayouts/ImprovedKeylayouts.h#L525
+// TODO:リングバッファ及びRTSピン対応(LOWで送信可能)
 
 bool serialMode = false; // シリアルモード(シリアル出力モードの有無)
 
@@ -114,7 +118,7 @@ const Key KEYMap[KEYMAP_LEN] =
   {KEY_RIGHT_BRACE, false}, //91  0x5b [
   {HID_KEYBOARD_INTERNATIONAL3, false}, //92  0x5c  バックスラッシュ
   {KEY_BACKSLASH, false}, //93  0x5d  ]
-  {KEY_EQUAL, false}, //94  0x5e  ^ 
+  {KEY_EQUAL, false}, //94  0x5e  ^
   {HID_KEYBOARD_INTERNATIONAL1, true}, //95  0x5f  _
   {KEY_LEFT_BRACE, true}, //96  0x60  `
   {KEY_A, false}, //97  0x61  a
@@ -137,7 +141,7 @@ const Key KEYMap[KEYMAP_LEN] =
   {KEY_R, false}, //114 0x72  r
   {KEY_S, false}, //115 0x73  s
   {KEY_T, false}, //116 0x74  t
-  {KEY_Y, false}, //117 0x75  u
+  {KEY_U, false}, //117 0x75  u
   {KEY_V, false}, //118 0x76  v
   {KEY_W, false}, //119 0x77  w
   {KEY_X, false}, //120 0x78  x
@@ -290,7 +294,9 @@ void setup() {
 
   if (serialMode) {
     digitalWrite(LED_BUILTIN, LOW);
-    Serial.println("Serial Mode");
+    delay(1000);
+    Serial.println("Serial Mode Ver.");
+    Serial.println(VERSION);
   } else {
     digitalWrite(LED_BUILTIN, HIGH);
     Keyboard.begin();
@@ -299,29 +305,53 @@ void setup() {
 
 void taskSerialMode() {
   int len = Serial1.available();
-  for (int count = 0;count < len;count++) {
+  for (int count = 0; count < len; count++) {
     int inByte = Serial1.read();
     Serial.printf("%d %d %d\n", inByte, KEYMap[inByte].key, KEYMap[inByte].shift);
   }
 }
 
+
+byte isPushSimultaneouslyKey = 0;
+
 void taskKeyMode() {
   int len = Serial1.available();
-  for (int count = 0;count < len;count++) {
+  for (int count = 0; count < len; count++) {
     int inByte = Serial1.read();
 #ifdef DEBUG_MODE
-    Serial.printf("%c %d %d %d\n", (char)inByte, inByte, KEYMap[inByte].key, KEYMap[inByte].shift);
+    Serial.printf("%c %02X %02X %d %02X\n", (char)inByte, inByte, KEYMap[inByte].key, KEYMap[inByte].shift, isPushSimultaneouslyKey);
 #endif // DEBUG_MODE
-    //if (KEYMap[inByte][1] == 1) {
-    //  BootKeyboard.press(KEY_LEFT_CTRL);
-    //  delay(30); // 30ms
-    //}
-    if (KEYMap[inByte].key != KEY_ERROR_UNDEFINED) {
+    if (inByte >= 0xF8) {
+      isPushSimultaneouslyKey = isPushSimultaneouslyKey | (0x01 << (0xFF - inByte));
+#ifdef DEBUG_MODE
+    Serial.printf("ket %02X\n",isPushSimultaneouslyKey);
+#endif 
+    } else if (KEYMap[inByte].key == KEY_ERROR_UNDEFINED) {
+      isPushSimultaneouslyKey = 0;
+    } else {
+#ifdef DEBUG_MODE
+    Serial.println("--key--");
+#endif 
+      for (int count = 0; count < 8; count++) {
+        if ((isPushSimultaneouslyKey >> (7 - count) & 0x01) != 0) {
+          Keyboard.press(KEYMap[0xF8 + count].key);
+#ifdef DEBUG_MODE
+          Serial.printf("[%02X]->%02X\n", 0xF8 + count, KEYMap[0xF8 + count].key);
+#endif // DEBUG_MODE
+        }
+      }
       if (KEYMap[inByte].shift) {
+#ifdef DEBUG_MODE
+        Serial.println("LEFT_SHIFT");
+#endif // DEBUG_MODE
         Keyboard.press(KEY_LEFT_SHIFT);
       }
       Keyboard.press(KEYMap[inByte].key);
+#ifdef DEBUG_MODE
+          Serial.printf("[%02X]->%02X\n--key--\n", inByte, KEYMap[inByte].key);
+#endif // DEBUG_MODE
       Keyboard.releaseAll();
+      isPushSimultaneouslyKey = 0;
     }
   }
 }

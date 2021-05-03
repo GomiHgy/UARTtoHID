@@ -4,12 +4,12 @@
 
 #include "HID-Project.h"
 
-#define VERSION "0.4"
-#define PIN_BTN   5
+#define VERSION "0.5"
+#define PIN_BTN 5
 #define KEYMAP_LEN 256
+#define KEY_RELEASE_DELAYTIME 70 // キーをリリースするまでの待ち時間(msec)
+#define KEY_DROP 0xF0
 //#define DEBUG_MODE
-
-// TODO:リングバッファ及びRTSピン対応(LOWで送信可能)
 
 bool serialMode = false; // シリアルモード(シリアル出力モードの有無)
 
@@ -262,7 +262,7 @@ const Key KEYMap[KEYMAP_LEN] =
   {KEY_ERROR_UNDEFINED, false}, //237 0xED
   {KEY_ERROR_UNDEFINED, false}, //238 0xEE
   {KEY_ERROR_UNDEFINED, false}, //239 0xEF
-  {KEY_ERROR_UNDEFINED, false}, //240 0xF0
+  {KEY_ERROR_UNDEFINED, false}, //240 0xF0 KEY_DROP
   {KEY_ERROR_UNDEFINED, false}, //241 0xF1
   {KEY_ERROR_UNDEFINED, false}, //242 0xF2
   {KEY_ERROR_UNDEFINED, false}, //243 0xF3
@@ -279,7 +279,6 @@ const Key KEYMap[KEYMAP_LEN] =
   {KEY_RIGHT_ALT, false}, //254 0xFE
   {KEY_RIGHT_GUI, false}, //255 0xFF
 };
-
 
 void setup() {
   pinMode(PIN_BTN, INPUT_PULLUP);
@@ -309,7 +308,6 @@ void taskSerialMode() {
   }
 }
 
-
 byte isPushSimultaneouslyKey = 0;
 
 void taskKeyMode() {
@@ -319,11 +317,19 @@ void taskKeyMode() {
 #ifdef DEBUG_MODE
     Serial.printf("%c %02X %02X %d %02X\n", (char)inByte, inByte, KEYMap[inByte].key, KEYMap[inByte].shift, isPushSimultaneouslyKey);
 #endif // DEBUG_MODE
+
     if (inByte >= 0xF8) {
       isPushSimultaneouslyKey = isPushSimultaneouslyKey | (0x01 << (0xFF - inByte));
 #ifdef DEBUG_MODE
     Serial.printf("ket %02X\n",isPushSimultaneouslyKey);
 #endif 
+    } else if (inByte == KEY_DROP) { // キードロップ受信
+      for(int count2 = 0;count2 < 5;count2++){
+        Keyboard.press(KEY_DOWN_ARROW);
+        delay(KEY_RELEASE_DELAYTIME);
+        Keyboard.releaseAll();
+      }
+      isPushSimultaneouslyKey = 0;
     } else if (KEYMap[inByte].key == KEY_ERROR_UNDEFINED) {
       isPushSimultaneouslyKey = 0;
     } else {
@@ -348,6 +354,7 @@ void taskKeyMode() {
 #ifdef DEBUG_MODE
           Serial.printf("[%02X]->%02X\n--key--\n", inByte, KEYMap[inByte].key);
 #endif // DEBUG_MODE
+      delay(KEY_RELEASE_DELAYTIME);
       Keyboard.releaseAll();
       isPushSimultaneouslyKey = 0;
     }
